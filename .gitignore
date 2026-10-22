@@ -31,3 +31,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Environment configuration ###
+*.yaml
+/.env
+/src/main/resources/application-local.yaml
+/src/main/resources/application-prod.yaml
+
+### Local Docker configuration ###
+/Dockerfile
+/compose.yaml
+/.dockerignore
+
+di_roi_ke_database_spec_v1.1_auth_sessions.md
