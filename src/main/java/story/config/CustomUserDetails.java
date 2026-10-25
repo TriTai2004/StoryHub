@@ -39,4 +39,8 @@ public record CustomUserDetails(
     public boolean isAccountNonLocked() {
         return status != User.Status.BANNED;
     }
+
+    public UUID getId(){
+        return id;
+    }
 }

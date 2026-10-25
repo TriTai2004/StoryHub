@@ -7,9 +7,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import story.config.properties.CookieProperties;
 import story.config.properties.JwtProperties;
+import story.config.properties.SessionProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class})
+@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class, SessionProperties.class})
 public class ApiApplication {
 
 	public static void main(String[] args) {
