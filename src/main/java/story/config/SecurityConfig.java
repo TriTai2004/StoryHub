@@ -74,9 +74,9 @@ public class SecurityConfig {
 
 					.requestMatchers(
 							HttpMethod.POST,
-							"/api/auth/login",
-							"/api/auth/refresh",
-							"/api/auth/register")
+							"/api/v1/auth/login",
+							"/api/v1/auth/refresh",
+							"/api/v1/auth/register")
 					.permitAll()
 
                     .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()

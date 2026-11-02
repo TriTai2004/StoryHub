@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
@@ -23,6 +24,7 @@ import story.feature.auth.mappers.AuthMapper;
 import story.feature.auth.model.UserSession;
 import story.feature.auth.repository.UserSessionRepository;
 import story.feature.auth.repository.UsedRefreshTokenRepository;
+import story.feature.auth.repository.UserIdentityRepository;
 import story.feature.auth.services.impl.AuthServiceImpl;
 import story.feature.auth.services.impl.SessionRefreshServiceImpl;
 import story.feature.auth.services.service.IRefreshTokenService;
@@ -55,7 +57,7 @@ class AuthRefreshTest {
             new SessionProperties(Duration.ofDays(7), Duration.ofDays(30)), manager);
         service = new AuthServiceImpl(new AuthMapper(), jwt, mock(AuthenticationManager.class),
             new CookieProperties(true, true, "Lax", "/", 900L, 604800L),
-            mock(UserRepository.class), mock(ISessionService.class), manager, rotation);
+            mock(UserRepository.class), mock(ISessionService.class), manager, rotation, mock(PasswordEncoder.class),  mock(UserIdentityRepository.class));
         when(manager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         User user = new User();
         user.setId(UUID.randomUUID());

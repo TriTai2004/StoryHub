@@ -20,11 +20,13 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import story.config.CustomUserDetails;
 import story.config.properties.CookieProperties;
 import story.feature.auth.dto.req.LoginRequest;
 import story.feature.auth.mappers.AuthMapper;
+import story.feature.auth.repository.UserIdentityRepository;
 import story.feature.auth.services.impl.AuthServiceImpl;
 import story.feature.auth.services.service.ISessionService;
 import story.feature.auth.services.service.ISessionRefreshService;
@@ -36,6 +38,8 @@ import story.security.JwtService;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AuthServiceImplTest {
@@ -54,7 +58,7 @@ class AuthServiceImplTest {
     void setUp() {
         service = new AuthServiceImpl(new AuthMapper(), jwtService, authenticationManager,
             new CookieProperties(true, true, "Lax", "/", 900L, 604800L), repository,
-            sessionService, transactionManager, mock(ISessionRefreshService.class));
+            sessionService, transactionManager, mock(ISessionRefreshService.class), mock(PasswordEncoder.class),  mock(UserIdentityRepository.class));
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         httpRequest.addHeader("User-Agent", "Test Browser");
         user.setId(UUID.randomUUID());

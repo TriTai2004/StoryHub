@@ -21,6 +21,12 @@ import story.config.SecurityConfig;
 import story.exception.GlobalExceptionHandler;
 import story.feature.auth.controllers.AuthController;
 import story.feature.auth.dto.req.LoginRequest;
+import story.feature.auth.dto.req.RegisterRequest;
+import story.feature.auth.mappers.AuthMapper;
+import story.feature.user.model.User;
+import story.exception.AppException;
+import story.exception.ErrorCode;
+import java.util.UUID;
 import story.feature.auth.services.service.IAuthService;
 import story.security.CookieType;
 import story.security.JwtService;
@@ -113,6 +119,58 @@ class AuthControllerTest {
         mvc.perform(post("/api/auth/refresh").with(csrf()))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void registerReturnsCreatedUserWithoutPassword() throws Exception {
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setDisplayName("New User");
+        user.setEmail("new@example.com");
+        user.setPasswordHash("secret-hash");
+        when(authService.register(any())).thenReturn(new AuthMapper().toAuthResponse(user));
+
+        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"New User\",\"email\":\"new@example.com\",\"password\":\"password123\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.data.email").value("new@example.com"))
+            .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
+            .andExpect(jsonPath("$.data.password").doesNotExist());
+        verify(authService).register(new RegisterRequest( "new@example.com", "password123"));
+    }
+
+    @Test
+    void registerRejectsInvalidInput() throws Exception {
+        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"\",\"email\":\"invalid\",\"password\":\"short\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerRejectsPasswordOverBcryptByteLimit() throws Exception {
+        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"User\",\"email\":\"new@example.com\",\"password\":\"" + "é".repeat(37) + "\"}"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerRequiresCsrf() throws Exception {
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"User\",\"email\":\"new@example.com\",\"password\":\"password123\"}"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void registerDuplicateReturnsConflict() throws Exception {
+        when(authService.register(any())).thenThrow(new AppException(ErrorCode.DATA_CONFLICT));
+        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"User\",\"email\":\"new@example.com\",\"password\":\"password123\"}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("DATA_CONFLICT"));
     }
 
     @Configuration

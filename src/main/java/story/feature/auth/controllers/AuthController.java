@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,14 +15,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 import story.common.dto.ApiResponse;
 import story.feature.auth.dto.req.LoginRequest;
+import story.feature.auth.dto.req.RegisterRequest;
 import story.feature.auth.dto.res.AuthResponse;
 import story.feature.auth.services.service.IAuthService;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
     private final IAuthService authService;
+
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest body) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(authService.register(body)));
+    }
 
     @GetMapping("/csrf")
     public ResponseEntity<ApiResponse<Void>> csrf(CsrfToken csrfToken) {

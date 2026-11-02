@@ -3,6 +3,7 @@ package story.feature.auth.services.impl;
 import java.util.UUID;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Locale;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -15,9 +16,11 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,10 +28,14 @@ import jakarta.servlet.http.Cookie;
 import lombok.RequiredArgsConstructor;
 import story.config.CustomUserDetails;
 import story.config.properties.CookieProperties;
+import story.exception.AppException;
+import story.exception.ErrorCode;
 import story.feature.auth.dto.req.LoginRequest;
 import story.feature.auth.dto.req.RegisterRequest;
 import story.feature.auth.dto.res.AuthResponse;
 import story.feature.auth.mappers.AuthMapper;
+import story.feature.auth.model.AuthIdentity;
+import story.feature.auth.repository.UserIdentityRepository;
 import story.feature.auth.services.service.IAuthService;
 import story.feature.auth.services.service.ISessionService;
 import story.feature.auth.services.service.ISessionRefreshService;
@@ -49,6 +56,8 @@ public class AuthServiceImpl implements IAuthService {
     private final ISessionService sessionService;
     private final PlatformTransactionManager transactionManager;
     private final ISessionRefreshService sessionRefreshService;
+    private final PasswordEncoder passwordEncoder;
+    private final UserIdentityRepository identityRepository;
 
     @Override
     public void refresh(HttpServletRequest request, HttpServletResponse response) {
@@ -175,15 +184,43 @@ public class AuthServiceImpl implements IAuthService {
     }
 
     @Override
+    @Transactional
     public AuthResponse register(RegisterRequest registerRequest) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'register'");
+        String email = registerRequest.email().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new AppException(ErrorCode.DATA_CONFLICT);
+        }
+
+        User user = new User();
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode(registerRequest.password()));
+        user.setRole(User.Role.USER);
+        user.setStatus(User.Status.ACTIVE);
+
+        user = userRepository.saveAndFlush(user); 
+
+        createIdentity(user, AuthIdentity.Provider.LOCAL);
+
+        return authMapper.toAuthResponse(user);
     }
 
     @Override
     public AuthResponse getMe() {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getMe'");
+    }
+
+    private void createIdentity(User user, AuthIdentity.Provider provider){
+
+        AuthIdentity authIdentity = new AuthIdentity();
+        authIdentity.setProvider(provider);
+        authIdentity.setUser(user);
+
+        if (provider == AuthIdentity.Provider.LOCAL) {
+            authIdentity.setProviderSubject(user.getId().toString());
+        }
+        identityRepository.save(authIdentity);
+
     }
     
 }

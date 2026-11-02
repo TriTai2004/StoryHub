@@ -25,13 +25,13 @@ public class User {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @Column(name = "username", nullable = false, unique = true, length = 40)
+    @Column(name = "username", nullable = true, unique = true, length = 40)
     private String username;
 
-    @Column(name = "display_name", nullable = false, length = 100)
+    @Column(name = "display_name", nullable = true, length = 100)
     private String displayName;
 
-    @Column(name = "email", nullable = true, unique = true, length = 255)
+    @Column(name = "email", nullable = false, unique = true, length = 255)
     private String email;
 
     @Column(name = "password_hash", nullable = true, columnDefinition = "text")
