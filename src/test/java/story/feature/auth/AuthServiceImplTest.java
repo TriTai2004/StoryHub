@@ -119,6 +119,30 @@ class AuthServiceImplTest {
         verify(repository).findById(user.getId());
     }
 
+    @Test
+    void logoutAllRevokesUserSessionsClearsCookiesAndSecurityContext() {
+        setCurrentUser();
+
+        service.logoutAll(response);
+
+        verify(sessionService).revokeAllSessions(user.getId());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        List<String> setCookies = response.getHeaders(HttpHeaders.SET_COOKIE);
+        assertEquals(2, setCookies.size());
+        assertTrue(setCookies.stream().anyMatch(cookie ->
+            cookie.startsWith(CookieType.ACCESS_TOKEN.getName() + "=") && cookie.contains("Max-Age=0")));
+        assertTrue(setCookies.stream().anyMatch(cookie ->
+            cookie.startsWith(CookieType.REFRESH_TOKEN.getName() + "=") && cookie.contains("Max-Age=0")));
+    }
+
+    @Test
+    void logoutAllRejectsMissingAuthentication() {
+        assertThrows(InsufficientAuthenticationException.class, () -> service.logoutAll(response));
+
+        verifyNoInteractions(sessionService);
+        assertTrue(response.getHeaders(HttpHeaders.SET_COOKIE).isEmpty());
+    }
+
     private void setCurrentUser() {
         var principal = new CustomUserDetails(user.getId(), user.getEmail(), null,
             User.Status.ACTIVE, List.of());

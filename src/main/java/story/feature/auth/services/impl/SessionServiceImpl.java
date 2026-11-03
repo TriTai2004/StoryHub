@@ -4,8 +4,10 @@ import java.net.InetAddress;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,5 +83,45 @@ public class SessionServiceImpl implements ISessionService {
         UserSession saved = sessionRepository.save(session);
         return new CreatedSession(saved.getId(), refreshToken,
             saved.getExpiresAt(), saved.getAbsoluteExpiresAt());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void validateActiveSession(UUID sessionId, UUID userId) {
+
+        UserSession session = sessionRepository.findById(sessionId)
+            .orElseThrow(() -> new BadCredentialsException("Invalid session"));
+
+        Instant now = clock.instant();
+
+        boolean invalid = !session.getUser().getId().equals(userId)
+            || session.getRevokedAt() != null
+            || !session.getExpiresAt().isAfter(now)
+            || !session.getAbsoluteExpiresAt().isAfter(now);
+
+        if (invalid) {
+            throw new BadCredentialsException("Session is expired or revoked");
+        }
+
+    }
+
+    @Override
+    @Transactional
+    public void revokeAllSessions(UUID userId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("User ID is required");
+        }
+
+        Instant now = clock.instant();
+
+        var sessions = sessionRepository.findAllUnrevokedByUserIdForUpdate(userId);
+
+        sessions.forEach(session -> {
+            session.setRevokedAt(now);
+            session.setRevokedReason(UserSession.RevokedReason.LOGOUT_ALL);
+        });
+
+        sessionRepository.saveAll(sessions);
+
     }
 }

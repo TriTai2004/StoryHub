@@ -5,10 +5,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.List;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 
 import story.config.properties.SessionProperties;
@@ -83,6 +87,92 @@ class SessionServiceImplTest {
             () -> new SessionProperties(Duration.ofDays(7), Duration.ofDays(-1)));
         assertThrows(IllegalArgumentException.class,
             () -> new SessionProperties(Duration.ofDays(31), Duration.ofDays(30)));
+    }
+
+    @Test
+    void acceptsActiveSessionOwnedByUser() {
+        User user = activeUser();
+        UserSession session = activeSession(user);
+        when(repository.findById(session.getId())).thenReturn(java.util.Optional.of(session));
+
+        assertDoesNotThrow(() -> service.validateActiveSession(session.getId(), user.getId()));
+    }
+
+    @Test
+    void rejectsMissingSession() {
+        UUID sessionId = UUID.randomUUID();
+        when(repository.findById(sessionId)).thenReturn(java.util.Optional.empty());
+
+        assertThrows(BadCredentialsException.class,
+            () -> service.validateActiveSession(sessionId, UUID.randomUUID()));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidSessions")
+    void rejectsSessionThatIsNotActive(UserSession session) {
+        when(repository.findById(session.getId())).thenReturn(java.util.Optional.of(session));
+
+        assertThrows(BadCredentialsException.class,
+            () -> service.validateActiveSession(session.getId(), session.getUser().getId()));
+    }
+
+    @Test
+    void revokesAllActiveSessionsForUser() {
+        User user = activeUser();
+        UserSession first = activeSession(user);
+        UserSession second = activeSession(user);
+        when(repository.findAllUnrevokedByUserIdForUpdate(user.getId()))
+            .thenReturn(List.of(first, second));
+
+        service.revokeAllSessions(user.getId());
+
+        for (UserSession session : List.of(first, second)) {
+            assertEquals(NOW, session.getRevokedAt());
+            assertEquals(UserSession.RevokedReason.LOGOUT_ALL, session.getRevokedReason());
+        }
+        verify(repository).saveAll(List.of(first, second));
+    }
+
+    @Test
+    void rejectsMissingUserIdWhenRevokingAllSessions() {
+        assertThrows(IllegalArgumentException.class, () -> service.revokeAllSessions(null));
+        verifyNoInteractions(repository);
+    }
+
+    private static Stream<UserSession> invalidSessions() {
+        User revokedUser = userWithId();
+        UserSession revoked = sessionFor(revokedUser);
+        revoked.setRevokedAt(NOW.minusSeconds(1));
+
+        User expiredUser = userWithId();
+        UserSession expired = sessionFor(expiredUser);
+        expired.setExpiresAt(NOW);
+
+        User absoluteExpiredUser = userWithId();
+        UserSession absoluteExpired = sessionFor(absoluteExpiredUser);
+        absoluteExpired.setAbsoluteExpiresAt(NOW);
+
+        return Stream.of(revoked, expired, absoluteExpired);
+    }
+
+    private UserSession activeSession(User user) {
+        return sessionFor(user);
+    }
+
+    private static UserSession sessionFor(User user) {
+        UserSession session = new UserSession();
+        session.setId(UUID.randomUUID());
+        session.setUser(user);
+        session.setExpiresAt(NOW.plusSeconds(60));
+        session.setAbsoluteExpiresAt(NOW.plusSeconds(120));
+        return session;
+    }
+
+    private static User userWithId() {
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        user.setStatus(User.Status.ACTIVE);
+        return user;
     }
 
     private User activeUser() {

@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,7 +31,9 @@ import story.exception.AppException;
 import story.exception.ErrorCode;
 import java.util.UUID;
 import story.feature.auth.services.service.IAuthService;
+import story.feature.auth.services.service.ISessionService;
 import story.security.CookieType;
+import story.security.GoogleLoginSuccessHandler;
 import story.security.JwtService;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,11 +49,12 @@ class AuthControllerTest {
     @Autowired private WebApplicationContext context;
     @Autowired private IAuthService authService;
     @Autowired private JwtService jwtService;
+    @Autowired private ISessionService sessionService;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        reset(authService, jwtService);
+        reset(authService, jwtService, sessionService);
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
@@ -199,7 +203,7 @@ class AuthControllerTest {
     @Test
     void getMeRequiresAuthentication() throws Exception {
         mvc.perform(get("/api/v1/auth/getMe"))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isUnauthorized());
         verifyNoInteractions(authService);
     }
 
@@ -224,6 +228,31 @@ class AuthControllerTest {
         verify(authService).getMe();
     }
 
+    @Test
+    void logoutAllRevokesSessionsForAuthenticatedUser() throws Exception {
+        mvc.perform(post("/api/v1/auth/logout-all").with(user("user@example.com")).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).logoutAll(any());
+    }
+
+    @Test
+    void logoutAllRequiresAuthentication() throws Exception {
+        mvc.perform(post("/api/v1/auth/logout-all").with(csrf()))
+            .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void logoutAllRequiresCsrf() throws Exception {
+        mvc.perform(post("/api/v1/auth/logout-all").with(user("user@example.com")))
+            .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authService);
+    }
+
     @Configuration
     @EnableWebMvc
     @EnableWebSecurity
@@ -232,5 +261,10 @@ class AuthControllerTest {
         @Bean IAuthService authService() { return mock(IAuthService.class); }
         @Bean JwtService jwtService() { return mock(JwtService.class); }
         @Bean CustomUserDetailsService userDetailsService() { return mock(CustomUserDetailsService.class); }
+        @Bean ISessionService sessionService() { return mock(ISessionService.class); }
+        @Bean GoogleLoginSuccessHandler googleLoginSuccessHandler() { return mock(GoogleLoginSuccessHandler.class); }
+        @Bean ClientRegistrationRepository clientRegistrationRepository() {
+            return mock(ClientRegistrationRepository.class);
+        }
     }
 }

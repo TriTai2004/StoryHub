@@ -9,6 +9,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,18 +18,22 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import story.config.CustomUserDetails;
 import story.config.CustomUserDetailsService;
+import story.feature.auth.services.service.ISessionService;
 import story.security.JwtService.TokenType;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
+    private final ISessionService sessionService;
 
     public JwtAuthenticationFilter(
             JwtService jwtService,
-            CustomUserDetailsService userDetailsService) {
+            CustomUserDetailsService userDetailsService,
+            ISessionService sessionService) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
+        this.sessionService = sessionService;
     }
 
     @Override
@@ -47,6 +52,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 var jwt = jwtService.validateToken(token, TokenType.ACCESS);
 
                 UUID userId = UUID.fromString(jwt.getSubject());
+
+                String sid = jwt.getClaimAsString("sid");
+
+                if (sid == null || sid.isBlank()) {
+                    throw new BadCredentialsException("Missing session ID");
+                }
+
+                UUID sessionId = UUID.fromString(sid);
+                sessionService.validateActiveSession(sessionId, userId);
 
                 CustomUserDetails userDetails = (CustomUserDetails) userDetailsService.loadUserByUserId(userId);
 

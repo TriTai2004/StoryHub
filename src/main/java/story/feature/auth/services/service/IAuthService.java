@@ -18,5 +18,6 @@ public interface IAuthService {
     void logout(HttpServletRequest request, HttpServletResponse response);
     AuthResponse loginGoogle(OidcUser principal,
             HttpServletRequest request, HttpServletResponse response);
+    void logoutAll(HttpServletResponse response);
 
 }

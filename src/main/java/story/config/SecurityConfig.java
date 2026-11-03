@@ -25,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import story.security.JwtAuthenticationFilter;
 import story.security.JwtService;
+import story.feature.auth.services.service.ISessionService;
 import story.security.GoogleLoginSuccessHandler;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.NullSecurityContextRepository;
@@ -40,9 +41,10 @@ public class SecurityConfig {
 	@Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter(
             JwtService jwtService,
-            CustomUserDetailsService userDetailsService) {
+            CustomUserDetailsService userDetailsService,
+			ISessionService sessionService) {
 
-        return new JwtAuthenticationFilter(jwtService, userDetailsService);
+        return new JwtAuthenticationFilter(jwtService, userDetailsService, sessionService);
     }
 
 	@Bean

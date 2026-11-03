@@ -295,22 +295,8 @@ public class AuthServiceImpl implements IAuthService {
             sessionService.revokeSession(refreshToken);
         }
 
-        response.addHeader(HttpHeaders.SET_COOKIE,
-            ResponseCookie.from(CookieType.ACCESS_TOKEN.getName(), "")
-                .httpOnly(cookieProperties.httpOnly())
-                .secure(cookieProperties.secure())
-                .sameSite(cookieProperties.sameSite())
-                .path(cookieProperties.path())
-                .maxAge(0)
-                .build().toString());
-        response.addHeader(HttpHeaders.SET_COOKIE,
-            ResponseCookie.from(CookieType.REFRESH_TOKEN.getName(), "")
-                .httpOnly(true)
-                .secure(cookieProperties.secure())
-                .sameSite(cookieProperties.sameSite())
-                .path("/api/v1/auth")
-                .maxAge(0)
-                .build().toString());
+        clearAuthCookies(response);
+
         SecurityContextHolder.clearContext();
     }
 
@@ -323,6 +309,50 @@ public class AuthServiceImpl implements IAuthService {
         authIdentity.setProviderSubject(providerSubject);
         identityRepository.save(authIdentity);
 
+    }
+
+    @Override
+    public void logoutAll(HttpServletResponse response) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof CustomUserDetails customUserDetails)) {
+            throw new InsufficientAuthenticationException("User is not authenticated");
+        }
+
+        sessionService.revokeAllSessions(customUserDetails.getId());
+
+        clearAuthCookies(response);
+
+        SecurityContextHolder.clearContext();
+
+    }
+
+    private void clearAuthCookies(HttpServletResponse response) {
+        response.addHeader(
+            HttpHeaders.SET_COOKIE,
+            ResponseCookie.from(
+                    CookieType.ACCESS_TOKEN.getName(), "")
+                .httpOnly(cookieProperties.httpOnly())
+                .secure(cookieProperties.secure())
+                .sameSite(cookieProperties.sameSite())
+                .path(cookieProperties.path())
+                .maxAge(0)
+                .build()
+                .toString()
+        );
+
+        response.addHeader(
+            HttpHeaders.SET_COOKIE,
+            ResponseCookie.from(
+                    CookieType.REFRESH_TOKEN.getName(), "")
+                .httpOnly(true)
+                .secure(cookieProperties.secure())
+                .sameSite(cookieProperties.sameSite())
+                .path("/api/v1/auth")
+                .maxAge(0)
+                .build()
+                .toString()
+        );
     }
     
 }

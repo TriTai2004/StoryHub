@@ -12,6 +12,10 @@ public interface ISessionService {
 
     void revokeSession(String refreshToken);
 
+    void validateActiveSession(UUID sessionId, UUID userId);
+
+    void revokeAllSessions(UUID userId);
+
     /** Internal result for issuing cookies; do not return directly as an API response. */
     record CreatedSession(UUID sessionId, String refreshToken, Instant expiresAt, Instant absoluteExpiresAt) {
         @Override
