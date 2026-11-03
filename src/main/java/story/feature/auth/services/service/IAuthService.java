@@ -1,6 +1,9 @@
 package story.feature.auth.services.service;
 
 import jakarta.servlet.http.HttpServletResponse;
+
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+
 import jakarta.servlet.http.HttpServletRequest;
 import story.feature.auth.dto.req.LoginRequest;
 import story.feature.auth.dto.req.RegisterRequest;
@@ -12,5 +15,8 @@ public interface IAuthService {
     void refresh(HttpServletRequest request, HttpServletResponse response);
     AuthResponse register(RegisterRequest registerRequest);
     AuthResponse getMe();
+    void logout(HttpServletRequest request, HttpServletResponse response);
+    AuthResponse loginGoogle(OidcUser principal,
+            HttpServletRequest request, HttpServletResponse response);
 
 }

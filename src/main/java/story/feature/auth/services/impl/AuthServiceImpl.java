@@ -4,6 +4,7 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Locale;
+import java.util.function.Supplier;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -20,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -114,10 +116,66 @@ public class AuthServiceImpl implements IAuthService {
             throw new IllegalStateException("Authentication principal must be CustomUserDetails");
         }
 
+        return issueLogin(() -> findActiveUser(userDetails.getId()), request, response);
+    }
+
+    @Override
+    public AuthResponse loginGoogle(OidcUser principal, HttpServletRequest request, HttpServletResponse response) {
+        validateGooglePrincipal(principal);
+        return issueLogin(() -> findOrCreateGoogleUser(principal), request, response);
+    }
+
+    private void validateGooglePrincipal(OidcUser principal) {
+        if (principal == null) {
+            throw new BadCredentialsException("Missing Google account");
+        }
+        String subject = principal.getSubject();
+        String email = principal.getEmail();
+        if (subject == null || subject.isBlank() || subject.length() > 255
+                || email == null || email.isBlank() || email.length() > 255
+                || !Boolean.TRUE.equals(principal.getEmailVerified())) {
+            throw new BadCredentialsException("Google account requires a verified email");
+        }
+    }
+
+    // Invoked inside issueLogin's transaction, together with session creation.
+    private User findOrCreateGoogleUser(OidcUser principal) {
+        return identityRepository.findByProviderAndProviderSubject(
+                AuthIdentity.Provider.GOOGLE, principal.getSubject())
+            .map(identity -> findActiveUser(identity.getUser().getId()))
+            .orElseGet(() -> createGoogleUser(principal));
+    }
+
+    private User createGoogleUser(OidcUser principal) {
+        String email = principal.getEmail().toLowerCase(Locale.ROOT);
+        String avatar = principal.getPicture();
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new BadCredentialsException("Email already registered; account linking is required");
+        }
+        User user = new User();
+        user.setUsername("gg_" + UUID.randomUUID().toString().replace("-", ""));
+        user.setEmail(email);
+        if(avatar != null ){
+            user.setAvatarKey(avatar);
+        }
+        String name = principal.getFullName();
+        if (name != null) {
+            user.setDisplayName(name.substring(0, Math.min(name.length(), 100)));
+        }
+        user.setEmailVerifiedAt(Instant.now());
+        user.setRole(User.Role.USER);
+        user.setStatus(User.Status.ACTIVE);
+        user = userRepository.saveAndFlush(user);
+        createIdentity(user, AuthIdentity.Provider.GOOGLE, principal.getSubject());
+        return user;
+    }
+
+    private AuthResponse issueLogin(Supplier<User> resolveUser, HttpServletRequest request,
+            HttpServletResponse response) {
         InetAddress ipAddress = resolveRemoteAddress(request);
-        // Commit the session before exposing either token to the client.
+        // User, identity and session share one transaction; write cookies only after commit.
         LoginResult result = Objects.requireNonNull(new TransactionTemplate(transactionManager).execute(status -> {
-            User user = findActiveUser(userDetails.getId());
+            User user = resolveUser.get();
             AuthResponse authResponse = authMapper.toAuthResponse(user);
             var session = sessionService.createSession(user, request.getHeader("User-Agent"), ipAddress);
             String token = jwtService.generateAccessToken(user.getId().toString(),
@@ -202,7 +260,7 @@ public class AuthServiceImpl implements IAuthService {
 
         user = userRepository.saveAndFlush(user); 
 
-        createIdentity(user, AuthIdentity.Provider.LOCAL);
+        createIdentity(user, AuthIdentity.Provider.LOCAL, user.getId().toString());
 
         return authMapper.toAuthResponse(user);
     }
@@ -225,15 +283,44 @@ public class AuthServiceImpl implements IAuthService {
         return authMapper.toAuthResponse(user);
     }
 
-    private void createIdentity(User user, AuthIdentity.Provider provider){
+    @Override
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = null;
+        try {
+            refreshToken = extractRefreshToken(request);
+        } catch (BadCredentialsException ignored) {
+            // Missing or malformed cookies must not prevent local logout.
+        }
+        if (refreshToken != null) {
+            sessionService.revokeSession(refreshToken);
+        }
+
+        response.addHeader(HttpHeaders.SET_COOKIE,
+            ResponseCookie.from(CookieType.ACCESS_TOKEN.getName(), "")
+                .httpOnly(cookieProperties.httpOnly())
+                .secure(cookieProperties.secure())
+                .sameSite(cookieProperties.sameSite())
+                .path(cookieProperties.path())
+                .maxAge(0)
+                .build().toString());
+        response.addHeader(HttpHeaders.SET_COOKIE,
+            ResponseCookie.from(CookieType.REFRESH_TOKEN.getName(), "")
+                .httpOnly(true)
+                .secure(cookieProperties.secure())
+                .sameSite(cookieProperties.sameSite())
+                .path("/api/v1/auth")
+                .maxAge(0)
+                .build().toString());
+        SecurityContextHolder.clearContext();
+    }
+
+    private void createIdentity(User user, AuthIdentity.Provider provider, String providerSubject) {
 
         AuthIdentity authIdentity = new AuthIdentity();
         authIdentity.setProvider(provider);
         authIdentity.setUser(user);
 
-        if (provider == AuthIdentity.Provider.LOCAL) {
-            authIdentity.setProviderSubject(user.getId().toString());
-        }
+        authIdentity.setProviderSubject(providerSubject);
         identityRepository.save(authIdentity);
 
     }

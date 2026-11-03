@@ -41,6 +41,23 @@ public class SessionServiceImpl implements ISessionService {
 
     @Override
     @Transactional
+    public void revokeSession(String refreshToken) {
+        if (refreshToken == null || !refreshToken.matches("[A-Za-z0-9_-]{43}")) {
+            return;
+        }
+        String hash = refreshTokenService.hashToken(refreshToken);
+        sessionRepository.findByRefreshTokenHashForUpdate(hash)
+            .ifPresent(session -> {
+                if (session.getRevokedAt() == null) {
+                    session.setRevokedAt(clock.instant());
+                    session.setRevokedReason(UserSession.RevokedReason.LOGOUT);
+                    sessionRepository.save(session);
+                }
+            });
+    }
+
+    @Override
+    @Transactional
     public CreatedSession createSession(User user, String userAgent, InetAddress ipAddress) {
         if (user == null || user.getId() == null) {
             throw new IllegalArgumentException("A persisted user is required to create a session");

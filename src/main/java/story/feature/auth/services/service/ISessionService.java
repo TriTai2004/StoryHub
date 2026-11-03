@@ -10,6 +10,8 @@ public interface ISessionService {
 
     CreatedSession createSession(User user, String userAgent, InetAddress ipAddress);
 
+    void revokeSession(String refreshToken);
+
     /** Internal result for issuing cookies; do not return directly as an API response. */
     record CreatedSession(UUID sessionId, String refreshToken, Instant expiresAt, Instant absoluteExpiresAt) {
         @Override

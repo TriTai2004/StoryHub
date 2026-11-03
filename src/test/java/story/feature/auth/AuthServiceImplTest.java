@@ -50,6 +50,7 @@ class AuthServiceImplTest {
     private final AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
     private final JwtService jwtService = mock(JwtService.class);
     private final UserRepository repository = mock(UserRepository.class);
+    private final UserIdentityRepository identities = mock(UserIdentityRepository.class);
     private final ISessionService sessionService = mock(ISessionService.class);
     private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
     private final MockHttpServletRequest httpRequest = new MockHttpServletRequest();
@@ -63,7 +64,7 @@ class AuthServiceImplTest {
         SecurityContextHolder.clearContext();
         service = new AuthServiceImpl(new AuthMapper(), jwtService, authenticationManager,
             new CookieProperties(true, true, "Lax", "/", 900L, 604800L), repository,
-            sessionService, transactionManager, mock(ISessionRefreshService.class), mock(PasswordEncoder.class),  mock(UserIdentityRepository.class));
+            sessionService, transactionManager, mock(ISessionRefreshService.class), mock(PasswordEncoder.class), identities);
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         httpRequest.addHeader("User-Agent", "Test Browser");
         user.setId(UUID.randomUUID());
@@ -252,6 +253,95 @@ class AuthServiceImplTest {
         assertThrows(IllegalStateException.class, () -> service.login(request, httpRequest, response));
 
         assertNull(response.getHeader(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    void googleRejectsUnverifiedEmail() {
+        var principal = googlePrincipal();
+        when(principal.getEmailVerified()).thenReturn(false);
+        assertThrows(BadCredentialsException.class,
+            () -> service.loginGoogle(principal, httpRequest, response));
+        verifyNoInteractions(identities, repository, sessionService);
+        assertNull(response.getHeader(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    void googleDoesNotAutomaticallyLinkExistingEmail() {
+        var principal = googlePrincipal();
+        when(repository.existsByEmailIgnoreCase("user@example.com")).thenReturn(true);
+        assertThrows(BadCredentialsException.class,
+            () -> service.loginGoogle(principal, httpRequest, response));
+        verify(identities, never()).save(any());
+        verifyNoInteractions(sessionService);
+        assertNull(response.getHeader(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    void googleCreatesIdentityAndIssuesCookiesAfterCommit() {
+        var principal = googlePrincipal();
+        when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
+            User created = invocation.getArgument(0);
+            created.setId(user.getId());
+            assertNotNull(created.getUsername());
+            assertNull(created.getPasswordHash());
+            assertNotNull(created.getEmailVerifiedAt());
+            assertEquals(User.Role.USER, created.getRole());
+            return created;
+        });
+        when(sessionService.createSession(any(), any(), any())).thenReturn(
+            new CreatedSession(UUID.randomUUID(), "refresh-token", Instant.now().plusSeconds(3600),
+                Instant.now().plusSeconds(7200)));
+        when(jwtService.generateAccessToken(any(), any())).thenReturn("access-token");
+        doAnswer(invocation -> {
+            assertNull(response.getHeader(HttpHeaders.SET_COOKIE));
+            return null;
+        }).when(transactionManager).commit(any());
+
+        service.loginGoogle(principal, httpRequest, response);
+
+        verify(identities).save(argThat(identity ->
+            identity.getProvider() == story.feature.auth.model.AuthIdentity.Provider.GOOGLE
+                && "google-subject".equals(identity.getProviderSubject())));
+        assertEquals(2, response.getHeaders(HttpHeaders.SET_COOKIE).size());
+        verify(transactionManager).commit(any());
+    }
+
+    @Test
+    void googleIdentityFailureRollsBackAndDoesNotIssueCookies() {
+        var principal = googlePrincipal();
+        when(repository.saveAndFlush(any())).thenReturn(user);
+        when(identities.save(any())).thenThrow(new IllegalStateException("Identity persistence failed"));
+
+        assertThrows(IllegalStateException.class,
+            () -> service.loginGoogle(principal, httpRequest, response));
+
+        verify(transactionManager).rollback(any());
+        verify(transactionManager, never()).commit(any());
+        verifyNoInteractions(sessionService, jwtService);
+        assertNull(response.getHeader(HttpHeaders.SET_COOKIE));
+    }
+
+    @Test
+    void googleRecognizesSubjectAndRejectsDisabledAccount() {
+        var principal = googlePrincipal();
+        var identity = new story.feature.auth.model.AuthIdentity();
+        identity.setUser(user);
+        when(identities.findByProviderAndProviderSubject(any(), eq("google-subject")))
+            .thenReturn(Optional.of(identity));
+        user.setStatus(User.Status.BANNED);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        assertThrows(DisabledException.class,
+            () -> service.loginGoogle(principal, httpRequest, response));
+        verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(sessionService);
+    }
+
+    private org.springframework.security.oauth2.core.oidc.user.OidcUser googlePrincipal() {
+        var principal = mock(org.springframework.security.oauth2.core.oidc.user.OidcUser.class);
+        when(principal.getSubject()).thenReturn("google-subject");
+        when(principal.getEmail()).thenReturn("User@Example.com");
+        when(principal.getEmailVerified()).thenReturn(true);
+        return principal;
     }
 
     private void prepareSession() {

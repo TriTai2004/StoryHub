@@ -25,6 +25,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import story.security.JwtAuthenticationFilter;
 import story.security.JwtService;
+import story.security.GoogleLoginSuccessHandler;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.NullSecurityContextRepository;
 
 @Configuration
 public class SecurityConfig {
@@ -54,7 +57,8 @@ public class SecurityConfig {
     }
 
 	@Bean
-	public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+	public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter,
+            GoogleLoginSuccessHandler googleLoginSuccessHandler) throws Exception {
 		
 		Set<String> csrfIgnoredPahts = Set.of(
 			"/api/v1/auth/register",
@@ -89,6 +93,7 @@ public class SecurityConfig {
 					.permitAll()
 
                     .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                    .requestMatchers("/oauth2/authorization/google", "/login/oauth2/code/google").permitAll()
 
 					.requestMatchers("/api/admin/**")
 					.hasRole("ADMIN")
@@ -98,6 +103,18 @@ public class SecurityConfig {
 			.formLogin(AbstractHttpConfigurer::disable)
 			.httpBasic(AbstractHttpConfigurer::disable)
 			.logout(AbstractHttpConfigurer::disable)
+            .oauth2Login(oauth -> oauth
+                .securityContextRepository(new NullSecurityContextRepository())
+                .successHandler(googleLoginSuccessHandler)
+                .failureHandler((request, response, exception) -> {
+                    if (request.getSession(false) != null) {
+                        request.getSession(false).invalidate();
+                    }
+                    SecurityContextHolder.clearContext();
+                    response.sendError(401, "Google login failed");
+                }))
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint((request, response, exception) -> response.sendError(401)))
 
 
 			.addFilterBefore(
