@@ -1,5 +1,7 @@
 package story.common.dto;
 
+import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /** Shared response body; the controller sets the HTTP status separately. */
@@ -27,10 +29,21 @@ public record ApiResponse<T>(boolean success, T data, ApiError error) {
         return new ApiResponse<>(false, null, new ApiError(code, message));
     }
 
+    public static <T> ApiResponse<T> failure(String code, String message, List<FieldErrorDetail> details) {
+        return new ApiResponse<>(false, null, new ApiError(code, message, details));
+    }
+
+    public record FieldErrorDetail(String field, String message) {}
+
     /** A stable application error code and a message safe to show to clients. */
-    public record ApiError(String code, String message) {
+    public record ApiError(String code, String message, List<FieldErrorDetail> details) {
+
+        public ApiError(String code, String message) {
+            this(code, message, List.of());
+        }
 
         public ApiError {
+            details = details == null ? List.of() : List.copyOf(details);
             if (code == null || code.isBlank()) {
                 throw new IllegalArgumentException("Error code must not be blank");
             }

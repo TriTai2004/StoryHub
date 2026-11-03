@@ -41,6 +41,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
+            MethodArgumentNotValidException ex, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+        var details = ex.getBindingResult().getFieldErrors().stream()
+                .map(error -> new ApiResponse.FieldErrorDetail(
+                        "passwordWithinByteLimit".equals(error.getField()) ? "password" : error.getField(),
+                        error.getDefaultMessage() != null ? error.getDefaultMessage() : "Invalid value"))
+                .toList();
+        return new ResponseEntity<>(ApiResponse.failure(
+                ErrorCode.VALIDATION_FAILED.name(), ErrorCode.VALIDATION_FAILED.getMessage(), details),
+                headers, status);
+    }
+
+    @Override
     protected @Nullable ResponseEntity<Object> handleExceptionInternal(
             Exception ex, @Nullable Object body, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {

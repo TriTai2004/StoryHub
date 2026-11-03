@@ -1,6 +1,7 @@
 package story.config;
 
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -54,13 +55,21 @@ public class SecurityConfig {
 
 	@Bean
 	public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+		
+		Set<String> csrfIgnoredPahts = Set.of(
+			"/api/v1/auth/register",
+			"/api/v1/auth/login"
+		);
+		
 		http
 			.cors(Customizer.withDefaults())
 
 			.csrf(csrf -> csrf
 					.csrfTokenRepository(
 							CookieCsrfTokenRepository.withHttpOnlyFalse())
-					.spa())
+					.spa()
+					.ignoringRequestMatchers(req -> "POST".equals(req.getMethod())
+						&& csrfIgnoredPahts.contains(req.getServletPath())))
 
 			.sessionManagement(session -> session
 					.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -79,7 +88,7 @@ public class SecurityConfig {
 							"/api/v1/auth/register")
 					.permitAll()
 
-                    .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
 
 					.requestMatchers("/api/admin/**")
 					.hasRole("ADMIN")

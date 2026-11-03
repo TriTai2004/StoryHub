@@ -25,7 +25,7 @@ public class User {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @Column(name = "username", nullable = true, unique = true, length = 40)
+    @Column(name = "username", nullable = false, unique = true, length = 40)
     private String username;
 
     @Column(name = "display_name", nullable = true, length = 100)
