@@ -153,7 +153,7 @@ public class AuthServiceImpl implements IAuthService {
             .httpOnly(true)
             .secure(cookieProperties.secure())
             .sameSite(cookieProperties.sameSite())
-            .path("/api/auth")
+            .path("/api/v1/auth")
             .maxAge(Math.min(cookieProperties.refreshTokenMaxAge(), remainingSeconds))
             .build();
     }

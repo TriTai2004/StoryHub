@@ -170,7 +170,7 @@ class AuthServiceImplTest {
         assertTrue(cookies.get(1).contains("HttpOnly"));
         assertTrue(cookies.get(1).contains("Secure"));
         assertTrue(cookies.get(1).contains("SameSite=Lax"));
-        assertTrue(cookies.get(1).contains("Path=/api/auth"));
+        assertTrue(cookies.get(1).contains("Path=/api/v1/auth;"));
     }
 
     @Test
