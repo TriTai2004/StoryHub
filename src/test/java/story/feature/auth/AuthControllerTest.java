@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.test.context.junit.jupiter.web.SpringJUnitWebConfig;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,6 +36,7 @@ import story.security.JwtService;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -53,7 +56,7 @@ class AuthControllerTest {
 
     @Test
     void browserCanObtainCsrfCookieThenLogin() throws Exception {
-        var bootstrap = mvc.perform(get("/api/auth/csrf"))
+        var bootstrap = mvc.perform(get("/api/v1/auth/csrf"))
             .andExpect(status().isOk())
             .andExpect(cookie().exists("XSRF-TOKEN"))
             .andReturn().getResponse();
@@ -61,7 +64,7 @@ class AuthControllerTest {
         assertNotNull(token);
         assertFalse(token.isHttpOnly());
 
-        mvc.perform(post("/api/auth/login").cookie(token).header("X-XSRF-TOKEN", token.getValue())
+        mvc.perform(post("/api/v1/auth/login").servletPath("/api/v1/auth/login").cookie(token).header("X-XSRF-TOKEN", token.getValue())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"user@example.com\",\"password\":\"password123\"}"))
             .andExpect(status().isOk())
@@ -71,7 +74,7 @@ class AuthControllerTest {
 
     @Test
     void loginValidatesRequestBeforeCallingService() throws Exception {
-        mvc.perform(post("/api/auth/login").with(csrf())
+        mvc.perform(post("/api/v1/auth/login").servletPath("/api/v1/auth/login").with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"invalid\",\"password\":\"\"}"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
@@ -79,16 +82,16 @@ class AuthControllerTest {
     }
 
     @Test
-    void loginRequiresCsrf() throws Exception {
-        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+    void loginIsAccessibleWithoutCsrf() throws Exception {
+        mvc.perform(post("/api/v1/auth/login").servletPath("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"user@example.com\",\"password\":\"password123\"}"))
-            .andExpect(status().isForbidden());
-        verifyNoInteractions(authService);
+            .andExpect(status().isOk());
+        verify(authService).login(eq(new LoginRequest("user@example.com", "password123")), any(), any());
     }
 
     @Test
     void refreshIsAccessibleWithoutAccessToken() throws Exception {
-        mvc.perform(post("/api/auth/refresh").with(csrf())
+        mvc.perform(post("/api/v1/auth/refresh").with(csrf())
                 .cookie(new Cookie(CookieType.REFRESH_TOKEN.getName(), "refresh-token")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true));
@@ -99,7 +102,7 @@ class AuthControllerTest {
     void refreshIsAccessibleWithExpiredAccessToken() throws Exception {
         when(jwtService.validateToken("expired", JwtService.TokenType.ACCESS))
             .thenThrow(new BadCredentialsException("Expired"));
-        mvc.perform(post("/api/auth/refresh").with(csrf())
+        mvc.perform(post("/api/v1/auth/refresh").with(csrf())
                 .cookie(new Cookie(CookieType.ACCESS_TOKEN.getName(), "expired")))
             .andExpect(status().isOk());
         verify(authService).refresh(any(), any());
@@ -107,7 +110,7 @@ class AuthControllerTest {
 
     @Test
     void refreshRequiresCsrf() throws Exception {
-        mvc.perform(post("/api/auth/refresh")
+        mvc.perform(post("/api/v1/auth/refresh")
                 .cookie(new Cookie(CookieType.REFRESH_TOKEN.getName(), "refresh-token")))
             .andExpect(status().isForbidden());
         verifyNoInteractions(authService);
@@ -116,7 +119,7 @@ class AuthControllerTest {
     @Test
     void refreshAuthenticationFailureReturns401() throws Exception {
         doThrow(new BadCredentialsException("Invalid token")).when(authService).refresh(any(), any());
-        mvc.perform(post("/api/auth/refresh").with(csrf()))
+        mvc.perform(post("/api/v1/auth/refresh").with(csrf()))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
     }
@@ -130,7 +133,7 @@ class AuthControllerTest {
         user.setPasswordHash("secret-hash");
         when(authService.register(any())).thenReturn(new AuthMapper().toAuthResponse(user));
 
-        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/v1/auth/register").servletPath("/api/v1/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"displayName\":\"New User\",\"email\":\"new@example.com\",\"password\":\"password123\"}"))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.data.email").value("new@example.com"))
@@ -141,7 +144,7 @@ class AuthControllerTest {
 
     @Test
     void registerRejectsInvalidInput() throws Exception {
-        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/v1/auth/register").servletPath("/api/v1/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"displayName\":\"\",\"email\":\"invalid\",\"password\":\"short\"}"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
@@ -150,27 +153,75 @@ class AuthControllerTest {
 
     @Test
     void registerRejectsPasswordOverBcryptByteLimit() throws Exception {
-        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/v1/auth/register").servletPath("/api/v1/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"displayName\":\"User\",\"email\":\"new@example.com\",\"password\":\"" + "é".repeat(37) + "\"}"))
             .andExpect(status().isBadRequest());
         verifyNoInteractions(authService);
     }
 
     @Test
-    void registerRequiresCsrf() throws Exception {
-        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+    void registerIsAccessibleWithoutCsrf() throws Exception {
+        mvc.perform(post("/api/v1/auth/register").servletPath("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"displayName\":\"User\",\"email\":\"new@example.com\",\"password\":\"password123\"}"))
-            .andExpect(status().isForbidden());
-        verifyNoInteractions(authService);
+            .andExpect(status().isCreated());
+        verify(authService).register(new RegisterRequest("new@example.com", "password123"));
     }
 
     @Test
     void registerDuplicateReturnsConflict() throws Exception {
         when(authService.register(any())).thenThrow(new AppException(ErrorCode.DATA_CONFLICT));
-        mvc.perform(post("/api/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/v1/auth/register").servletPath("/api/v1/auth/register").with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"displayName\":\"User\",\"email\":\"new@example.com\",\"password\":\"password123\"}"))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error.code").value("DATA_CONFLICT"));
+    }
+
+    @Test
+    void getMeReturnsCurrentUserWithoutPasswordOrCsrf() throws Exception {
+        User currentUser = new User();
+        currentUser.setId(UUID.randomUUID());
+        currentUser.setEmail("user@example.com");
+        currentUser.setDisplayName("Test User");
+        currentUser.setPasswordHash("secret-hash");
+        when(authService.getMe()).thenReturn(new AuthMapper().toAuthResponse(currentUser));
+
+        mvc.perform(get("/api/v1/auth/getMe").with(user("user@example.com")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.data.id").value(currentUser.getId().toString()))
+            .andExpect(jsonPath("$.data.email").value("user@example.com"))
+            .andExpect(jsonPath("$.data.displayName").value("Test User"))
+            .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
+            .andExpect(jsonPath("$.data.password").doesNotExist());
+        verify(authService).getMe();
+    }
+
+    @Test
+    void getMeRequiresAuthentication() throws Exception {
+        mvc.perform(get("/api/v1/auth/getMe"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void getMeAuthenticationFailureReturns401() throws Exception {
+        when(authService.getMe()).thenThrow(new InsufficientAuthenticationException("User is not authenticated"));
+
+        mvc.perform(get("/api/v1/auth/getMe").with(user("user@example.com")))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        verify(authService).getMe();
+    }
+
+    @Test
+    void getMeMissingUserReturns401() throws Exception {
+        when(authService.getMe()).thenThrow(new UsernameNotFoundException("User not found"));
+
+        mvc.perform(get("/api/v1/auth/getMe").with(user("user@example.com")))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        verify(authService).getMe();
     }
 
     @Configuration

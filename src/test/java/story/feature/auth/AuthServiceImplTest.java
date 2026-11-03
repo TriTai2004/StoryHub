@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.Duration;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -19,6 +20,9 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -56,6 +60,7 @@ class AuthServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         service = new AuthServiceImpl(new AuthMapper(), jwtService, authenticationManager,
             new CookieProperties(true, true, "Lax", "/", 900L, 604800L), repository,
             sessionService, transactionManager, mock(ISessionRefreshService.class), mock(PasswordEncoder.class),  mock(UserIdentityRepository.class));
@@ -64,6 +69,60 @@ class AuthServiceImplTest {
         user.setId(UUID.randomUUID());
         user.setEmail(request.email());
         user.setDisplayName("Test User");
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void getMeReturnsCurrentUserFromDatabase() {
+        setCurrentUser();
+        user.setEmail("updated@example.com");
+        user.setDisplayName("Updated User");
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+
+        var result = service.getMe();
+
+        assertEquals(user.getId(), result.id());
+        assertEquals("updated@example.com", result.email());
+        assertEquals("Updated User", result.displayName());
+        assertEquals(user.getRole(), result.role());
+        assertEquals(user.getStatus(), result.status());
+        verify(repository).findById(user.getId());
+        verifyNoInteractions(authenticationManager, jwtService, sessionService);
+    }
+
+    @Test
+    void getMeRejectsMissingAuthentication() {
+        assertThrows(InsufficientAuthenticationException.class, service::getMe);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void getMeRejectsUnexpectedPrincipal() {
+        SecurityContextHolder.getContext().setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated("unexpected", null, List.of()));
+
+        assertThrows(InsufficientAuthenticationException.class, service::getMe);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void getMeRejectsMissingUser() {
+        setCurrentUser();
+        when(repository.findById(user.getId())).thenReturn(Optional.empty());
+
+        assertThrows(UsernameNotFoundException.class, service::getMe);
+        verify(repository).findById(user.getId());
+    }
+
+    private void setCurrentUser() {
+        var principal = new CustomUserDetails(user.getId(), user.getEmail(), null,
+            User.Status.ACTIVE, List.of());
+        SecurityContextHolder.getContext().setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of()));
     }
 
     private void authenticateUser() {

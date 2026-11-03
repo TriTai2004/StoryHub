@@ -56,7 +56,7 @@ class AuthRegisterTest {
         var result = service.register(request);
 
         assertEquals(id, result.id());
-        assertEquals("New User", result.displayName());
+        assertNull(result.displayName());
         assertEquals("new@example.com", result.email());
         verify(users).existsByEmailIgnoreCase("new@example.com");
         verifyNoInteractions(jwt, sessions);
