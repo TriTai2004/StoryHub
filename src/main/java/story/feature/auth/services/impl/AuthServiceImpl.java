@@ -37,9 +37,11 @@ import story.exception.AppException;
 import story.exception.ErrorCode;
 import story.feature.auth.dto.req.LoginRequest;
 import story.feature.auth.dto.req.RegisterRequest;
+import story.feature.auth.dto.req.ChangePasswordRequest;
 import story.feature.auth.dto.res.AuthResponse;
 import story.feature.auth.mappers.AuthMapper;
 import story.feature.auth.model.AuthIdentity;
+import story.feature.auth.model.UserSession;
 import story.feature.auth.repository.UserIdentityRepository;
 import story.feature.auth.services.service.IAuthService;
 import story.feature.auth.services.service.ISessionService;
@@ -325,6 +327,39 @@ public class AuthServiceImpl implements IAuthService {
 
         SecurityContextHolder.clearContext();
 
+    }
+
+    @Override
+    public void changePassword(ChangePasswordRequest request, HttpServletResponse response) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
+            throw new InsufficientAuthenticationException("User is not authenticated");
+        }
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            User user = userRepository.findById(userDetails.getId())
+                .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
+
+            String currentHash = user.getPasswordHash();
+            if (currentHash == null || !passwordEncoder.matches(request.currentPassword(), currentHash)) {
+                throw new BadCredentialsException("Invalid credentials");
+            }
+            if (passwordEncoder.matches(request.newPassword(), currentHash)) {
+                throw new AppException(
+                    ErrorCode.BAD_REQUEST,
+                    "New password must be different from current password"
+                );
+            }
+
+            user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+            userRepository.saveAndFlush(user);
+            sessionService.revokeAllSessions(
+                user.getId(), UserSession.RevokedReason.SECURITY_EVENT);
+        });
+
+        clearAuthCookies(response);
+        SecurityContextHolder.clearContext();
     }
 
     private void clearAuthCookies(HttpServletResponse response) {

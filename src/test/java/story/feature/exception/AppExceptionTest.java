@@ -29,8 +29,23 @@ class AppExceptionTest {
     }
 
     @Test
+    void preservesCustomClientSafeMessage() {
+        var exception = new AppException(ErrorCode.BAD_REQUEST, "Password must be different");
+
+        assertSame(ErrorCode.BAD_REQUEST, exception.getErrorCode());
+        assertEquals("Password must be different", exception.getMessage());
+    }
+
+    @Test
     void rejectsNullErrorCodesInBothConstructors() {
         assertThrows(NullPointerException.class, () -> new AppException(null));
         assertThrows(NullPointerException.class, () -> new AppException(null, new RuntimeException()));
+        assertThrows(NullPointerException.class, () -> new AppException(null, "message"));
+    }
+
+    @Test
+    void rejectsBlankCustomMessage() {
+        assertThrows(IllegalArgumentException.class,
+            () -> new AppException(ErrorCode.BAD_REQUEST, " "));
     }
 }

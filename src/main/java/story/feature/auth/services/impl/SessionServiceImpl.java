@@ -108,9 +108,16 @@ public class SessionServiceImpl implements ISessionService {
     @Override
     @Transactional
     public void revokeAllSessions(UUID userId) {
+        revokeAllSessions(userId, UserSession.RevokedReason.LOGOUT_ALL);
+    }
+
+    @Override
+    @Transactional
+    public void revokeAllSessions(UUID userId, UserSession.RevokedReason reason) {
         if (userId == null) {
             throw new IllegalArgumentException("User ID is required");
         }
+        Objects.requireNonNull(reason, "Revocation reason is required");
 
         Instant now = clock.instant();
 
@@ -118,7 +125,7 @@ public class SessionServiceImpl implements ISessionService {
 
         sessions.forEach(session -> {
             session.setRevokedAt(now);
-            session.setRevokedReason(UserSession.RevokedReason.LOGOUT_ALL);
+            session.setRevokedReason(reason);
         });
 
         sessionRepository.saveAll(sessions);

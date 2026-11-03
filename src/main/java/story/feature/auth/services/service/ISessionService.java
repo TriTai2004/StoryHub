@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import story.feature.user.model.User;
+import story.feature.auth.model.UserSession;
 
 public interface ISessionService {
 
@@ -15,6 +16,8 @@ public interface ISessionService {
     void validateActiveSession(UUID sessionId, UUID userId);
 
     void revokeAllSessions(UUID userId);
+
+    void revokeAllSessions(UUID userId, UserSession.RevokedReason reason);
 
     /** Internal result for issuing cookies; do not return directly as an API response. */
     record CreatedSession(UUID sessionId, String refreshToken, Instant expiresAt, Instant absoluteExpiresAt) {

@@ -89,6 +89,18 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void returnsCustomBusinessErrorMessage() throws Exception {
+        when(service.execute()).thenThrow(new AppException(
+            ErrorCode.BAD_REQUEST, "New password must be different from current password"));
+
+        mvc.perform(get("/test/failure"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"))
+            .andExpect(jsonPath("$.error.message")
+                .value("New password must be different from current password"));
+    }
+
+    @Test
     void rejectsInvalidBodyUsingBeanValidation() throws Exception {
         assertError(mvc.perform(post("/test/body").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"\"}")), 400, ErrorCode.VALIDATION_FAILED);

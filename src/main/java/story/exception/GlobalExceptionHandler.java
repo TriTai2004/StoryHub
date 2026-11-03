@@ -46,12 +46,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpStatusCode status, WebRequest request) {
         var details = ex.getBindingResult().getFieldErrors().stream()
                 .map(error -> new ApiResponse.FieldErrorDetail(
-                        "passwordWithinByteLimit".equals(error.getField()) ? "password" : error.getField(),
+                        passwordField(error.getField()),
                         error.getDefaultMessage() != null ? error.getDefaultMessage() : "Invalid value"))
                 .toList();
         return new ResponseEntity<>(ApiResponse.failure(
                 ErrorCode.VALIDATION_FAILED.name(), ErrorCode.VALIDATION_FAILED.getMessage(), details),
                 headers, status);
+    }
+
+    private String passwordField(String field) {
+        return switch (field) {
+            case "passwordWithinByteLimit" -> "password";
+            case "currentPasswordWithinByteLimit" -> "currentPassword";
+            case "newPasswordWithinByteLimit" -> "newPassword";
+            case "newPasswordConfirmed" -> "confirmNewPassword";
+            default -> field;
+        };
     }
 
     @Override
@@ -64,7 +74,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(AppException.class)
     public @Nullable ResponseEntity<Object> handleAppException(AppException ex, WebRequest request) {
-        return respond(ex, ex.getErrorCode(), request);
+        ErrorCode code = ex.getErrorCode();
+        return respond(ex, code, ex.getMessage(), new HttpHeaders(), code.getStatus(), request);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -155,10 +166,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private @Nullable ResponseEntity<Object> respond(Exception ex, ErrorCode code,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        return respond(ex, code, code.getMessage(), headers, status, request);
+    }
+
+    private @Nullable ResponseEntity<Object> respond(Exception ex, ErrorCode code, String message,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         if (status.is5xxServerError()) {
             log.error("Request failed: code={}, status={}", code.name(), status.value(), ex);
         }
         return super.handleExceptionInternal(ex,
-                ApiResponse.failure(code.name(), code.getMessage()), headers, status, request);
+                ApiResponse.failure(code.name(), message), headers, status, request);
     }
 }

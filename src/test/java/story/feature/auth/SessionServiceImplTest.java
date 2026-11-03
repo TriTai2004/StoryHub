@@ -139,6 +139,20 @@ class SessionServiceImplTest {
         verifyNoInteractions(repository);
     }
 
+    @Test
+    void revokesSessionsWithProvidedSecurityReason() {
+        User user = activeUser();
+        UserSession session = activeSession(user);
+        when(repository.findAllUnrevokedByUserIdForUpdate(user.getId()))
+            .thenReturn(List.of(session));
+
+        service.revokeAllSessions(user.getId(), UserSession.RevokedReason.SECURITY_EVENT);
+
+        assertEquals(NOW, session.getRevokedAt());
+        assertEquals(UserSession.RevokedReason.SECURITY_EVENT, session.getRevokedReason());
+        verify(repository).saveAll(List.of(session));
+    }
+
     private static Stream<UserSession> invalidSessions() {
         User revokedUser = userWithId();
         UserSession revoked = sessionFor(revokedUser);

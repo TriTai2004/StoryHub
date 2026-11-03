@@ -15,7 +15,19 @@ public class AppException extends RuntimeException {
         this.errorCode = errorCode;
     }
 
+    public AppException(ErrorCode errorCode, String message) {
+        super(requireMessage(message));
+        this.errorCode = Objects.requireNonNull(errorCode, "errorCode");
+    }
+
     public ErrorCode getErrorCode() {
         return errorCode;
+    }
+
+    private static String requireMessage(String message) {
+        if (message == null || message.isBlank()) {
+            throw new IllegalArgumentException("message must not be blank");
+        }
+        return message;
     }
 }

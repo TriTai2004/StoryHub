@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import jakarta.servlet.http.HttpServletRequest;
 import story.feature.auth.dto.req.LoginRequest;
 import story.feature.auth.dto.req.RegisterRequest;
+import story.feature.auth.dto.req.ChangePasswordRequest;
 import story.feature.auth.dto.res.AuthResponse;
 
 public interface IAuthService {
@@ -19,5 +20,6 @@ public interface IAuthService {
     AuthResponse loginGoogle(OidcUser principal,
             HttpServletRequest request, HttpServletResponse response);
     void logoutAll(HttpServletResponse response);
+    void changePassword(ChangePasswordRequest request, HttpServletResponse response);
 
 }

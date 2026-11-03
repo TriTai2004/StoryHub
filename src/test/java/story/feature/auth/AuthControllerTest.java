@@ -24,6 +24,7 @@ import story.config.SecurityConfig;
 import story.exception.GlobalExceptionHandler;
 import story.feature.auth.controllers.AuthController;
 import story.feature.auth.dto.req.LoginRequest;
+import story.feature.auth.dto.req.ChangePasswordRequest;
 import story.feature.auth.dto.req.RegisterRequest;
 import story.feature.auth.mappers.AuthMapper;
 import story.feature.user.model.User;
@@ -248,6 +249,70 @@ class AuthControllerTest {
     @Test
     void logoutAllRequiresCsrf() throws Exception {
         mvc.perform(post("/api/v1/auth/logout-all").with(user("user@example.com")))
+            .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void authenticatedUserCanChangePassword() throws Exception {
+        mvc.perform(put("/api/v1/auth/password").with(user("user@example.com")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"currentPassword":"current-password","newPassword":"new-password","confirmNewPassword":"new-password"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true));
+
+        verify(authService).changePassword(
+            eq(new ChangePasswordRequest("current-password", "new-password", "new-password")), any());
+    }
+
+    @Test
+    void changePasswordRejectsInvalidConfirmation() throws Exception {
+        mvc.perform(put("/api/v1/auth/password").with(user("user@example.com")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"currentPassword":"current-password","newPassword":"new-password","confirmNewPassword":"different-password"}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void changePasswordRejectsPasswordOverBcryptByteLimit() throws Exception {
+        String password = "é".repeat(37);
+        mvc.perform(put("/api/v1/auth/password").with(user("user@example.com")).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"current-password\",\"newPassword\":\""
+                    + password + "\",\"confirmNewPassword\":\"" + password + "\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void changePasswordRequiresAuthentication() throws Exception {
+        mvc.perform(put("/api/v1/auth/password").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"currentPassword":"current-password","newPassword":"new-password","confirmNewPassword":"new-password"}
+                    """))
+            .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void changePasswordRequiresCsrf() throws Exception {
+        mvc.perform(put("/api/v1/auth/password").with(user("user@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"currentPassword":"current-password","newPassword":"new-password","confirmNewPassword":"new-password"}
+                    """))
             .andExpect(status().isForbidden());
 
         verifyNoInteractions(authService);

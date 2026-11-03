@@ -28,7 +28,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import story.config.CustomUserDetails;
 import story.config.properties.CookieProperties;
+import story.exception.AppException;
+import story.exception.ErrorCode;
 import story.feature.auth.dto.req.LoginRequest;
+import story.feature.auth.dto.req.ChangePasswordRequest;
+import story.feature.auth.model.UserSession;
 import story.feature.auth.mappers.AuthMapper;
 import story.feature.auth.repository.UserIdentityRepository;
 import story.feature.auth.services.impl.AuthServiceImpl;
@@ -53,6 +57,7 @@ class AuthServiceImplTest {
     private final UserIdentityRepository identities = mock(UserIdentityRepository.class);
     private final ISessionService sessionService = mock(ISessionService.class);
     private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final MockHttpServletRequest httpRequest = new MockHttpServletRequest();
     private final MockHttpServletResponse response = new MockHttpServletResponse();
     private final LoginRequest request = new LoginRequest("user@example.com", "password123");
@@ -64,7 +69,7 @@ class AuthServiceImplTest {
         SecurityContextHolder.clearContext();
         service = new AuthServiceImpl(new AuthMapper(), jwtService, authenticationManager,
             new CookieProperties(true, true, "Lax", "/", 900L, 604800L), repository,
-            sessionService, transactionManager, mock(ISessionRefreshService.class), mock(PasswordEncoder.class), identities);
+            sessionService, transactionManager, mock(ISessionRefreshService.class), passwordEncoder, identities);
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         httpRequest.addHeader("User-Agent", "Test Browser");
         user.setId(UUID.randomUUID());
@@ -141,6 +146,94 @@ class AuthServiceImplTest {
 
         verifyNoInteractions(sessionService);
         assertTrue(response.getHeaders(HttpHeaders.SET_COOKIE).isEmpty());
+    }
+
+    @Test
+    void changePasswordUpdatesHashRevokesSessionsAndClearsCookiesAfterCommit() {
+        setCurrentUser();
+        user.setPasswordHash("old-hash");
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("current-password", "old-hash")).thenReturn(true);
+        when(passwordEncoder.matches("new-password", "old-hash")).thenReturn(false);
+        when(passwordEncoder.encode("new-password")).thenReturn("new-hash");
+        doAnswer(invocation -> {
+            assertTrue(response.getHeaders(HttpHeaders.SET_COOKIE).isEmpty());
+            return null;
+        }).when(transactionManager).commit(any());
+
+        service.changePassword(
+            new ChangePasswordRequest("current-password", "new-password", "new-password"), response);
+
+        assertEquals("new-hash", user.getPasswordHash());
+        verify(repository).saveAndFlush(user);
+        verify(sessionService).revokeAllSessions(
+            user.getId(), UserSession.RevokedReason.SECURITY_EVENT);
+        verify(transactionManager).commit(any());
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertEquals(2, response.getHeaders(HttpHeaders.SET_COOKIE).size());
+    }
+
+    @Test
+    void changePasswordRejectsIncorrectCurrentPasswordWithoutChangingState() {
+        setCurrentUser();
+        user.setPasswordHash("old-hash");
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrong-password", "old-hash")).thenReturn(false);
+
+        assertThrows(BadCredentialsException.class, () -> service.changePassword(
+            new ChangePasswordRequest("wrong-password", "new-password", "new-password"), response));
+
+        assertEquals("old-hash", user.getPasswordHash());
+        verify(transactionManager).rollback(any());
+        verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(sessionService);
+        assertTrue(response.getHeaders(HttpHeaders.SET_COOKIE).isEmpty());
+    }
+
+    @Test
+    void changePasswordRejectsReuseOfCurrentPassword() {
+        setCurrentUser();
+        user.setPasswordHash("old-hash");
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("current-password", "old-hash")).thenReturn(true);
+
+        AppException exception = assertThrows(AppException.class, () -> service.changePassword(
+            new ChangePasswordRequest("current-password", "current-password", "current-password"), response));
+
+        assertEquals(ErrorCode.BAD_REQUEST, exception.getErrorCode());
+        verify(transactionManager).rollback(any());
+        verify(repository, never()).saveAndFlush(any());
+        verifyNoInteractions(sessionService);
+    }
+
+    @Test
+    void changePasswordRejectsAccountWithoutLocalPassword() {
+        setCurrentUser();
+        user.setPasswordHash(null);
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+
+        assertThrows(BadCredentialsException.class, () -> service.changePassword(
+            new ChangePasswordRequest("current-password", "new-password", "new-password"), response));
+
+        verifyNoInteractions(passwordEncoder, sessionService);
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void changePasswordCommitFailureDoesNotClearCookies() {
+        setCurrentUser();
+        user.setPasswordHash("old-hash");
+        when(repository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("current-password", "old-hash")).thenReturn(true);
+        when(passwordEncoder.matches("new-password", "old-hash")).thenReturn(false);
+        when(passwordEncoder.encode("new-password")).thenReturn("new-hash");
+        doThrow(new IllegalStateException("Commit failed")).when(transactionManager).commit(any());
+
+        assertThrows(IllegalStateException.class, () -> service.changePassword(
+            new ChangePasswordRequest("current-password", "new-password", "new-password"), response));
+
+        assertTrue(response.getHeaders(HttpHeaders.SET_COOKIE).isEmpty());
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
     }
 
     private void setCurrentUser() {

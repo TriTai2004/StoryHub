@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import story.common.dto.ApiResponse;
 import story.feature.auth.dto.req.LoginRequest;
 import story.feature.auth.dto.req.RegisterRequest;
+import story.feature.auth.dto.req.ChangePasswordRequest;
 import story.feature.auth.dto.res.AuthResponse;
 import story.feature.auth.services.service.IAuthService;
 
@@ -64,6 +66,14 @@ public class AuthController {
     @PostMapping("/logout-all")
     public ResponseEntity<ApiResponse<Void>> logoutAll(HttpServletResponse response) {
         authService.logoutAll(response);
+        return ResponseEntity.ok(ApiResponse.empty());
+    }
+
+    @PutMapping("/password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest body,
+            HttpServletResponse response) {
+        authService.changePassword(body, response);
         return ResponseEntity.ok(ApiResponse.empty());
     }
 
