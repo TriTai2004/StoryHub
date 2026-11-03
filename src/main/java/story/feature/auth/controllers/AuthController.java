@@ -48,4 +48,11 @@ public class AuthController {
         authService.refresh(request, response);
         return ResponseEntity.ok(ApiResponse.empty());
     }
+
+    @GetMapping("/getMe")
+    public ResponseEntity<ApiResponse<AuthResponse>> getMe() {
+
+        return ResponseEntity.ok(ApiResponse.success(authService.getMe()));
+    }
+    
 }

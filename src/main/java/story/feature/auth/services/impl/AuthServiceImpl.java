@@ -3,19 +3,25 @@ package story.feature.auth.services.impl;
 import java.util.UUID;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Locale;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.time.Instant;
 
+import org.apache.tomcat.websocket.AuthenticationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -24,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.security.auth.message.AuthException;
 import jakarta.servlet.http.Cookie;
 import lombok.RequiredArgsConstructor;
 import story.config.CustomUserDetails;
@@ -206,8 +213,20 @@ public class AuthServiceImpl implements IAuthService {
 
     @Override
     public AuthResponse getMe() {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getMe'");
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
+            throw new InsufficientAuthenticationException("User is not authenticated");
+        }
+
+        User user = userRepository.findById(userDetails.getId())
+                .orElseThrow(() ->
+                        new UsernameNotFoundException("User not found")
+                );
+
+        return authMapper.toAuthResponse(user);
     }
 
     private void createIdentity(User user, AuthIdentity.Provider provider){
