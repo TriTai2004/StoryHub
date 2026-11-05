@@ -128,11 +128,11 @@ class UserControllerTest {
     void patchBindsOnlyEditableFields() throws Exception {
         mvc.perform(patch("/api/v1/users/me").with(user("alice")).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content("""
-                    {"bio":"Hello","role":"ADMIN","status":"ACTIVE","email":"other@example.com",
+                    {"bio":"Hello","avatarKey":"other-avatar","coverKey":"other-cover","role":"ADMIN","status":"ACTIVE","email":"other@example.com",
                      "id":"00000000-0000-0000-0000-000000000001","username":"other","passwordHash":"evil"}
                     """))
             .andExpect(status().isOk());
-        verify(service).updateMe(new UpdateProfileRequest(null, "Hello", null, null));
+        verify(service).updateMe(new UpdateProfileRequest(null, "Hello"));
     }
 
     @Test

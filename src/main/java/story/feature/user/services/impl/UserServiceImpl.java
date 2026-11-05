@@ -72,8 +72,6 @@ public class UserServiceImpl implements IUserService {
         User user = currentUser();
         if (request.displayName() != null) user.setDisplayName(clean(request.displayName()));
         if (request.bio() != null) user.setBio(clean(request.bio()));
-        if (request.avatarKey() != null) user.setAvatarKey(clean(request.avatarKey()));
-        if (request.coverKey() != null) user.setCoverKey(clean(request.coverKey()));
         return userMapper.toMyProfile(userRepository.saveAndFlush(user));
     }
 

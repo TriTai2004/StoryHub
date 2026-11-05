@@ -101,7 +101,7 @@ class UserServiceImplTest {
     @Test
     void patchUpdatesOnlyProvidedFieldsOfAuthenticatedUser() {
         when(users.saveAndFlush(current)).thenReturn(current);
-        var result = service.updateMe(new UpdateProfileRequest(" Alice ", "", null, null));
+        var result = service.updateMe(new UpdateProfileRequest(" Alice ", ""));
         assertEquals("Alice", result.displayName());
         assertNull(result.bio());
         assertEquals("https://example.com/avatar.jpg", result.avatarUrl());
@@ -135,7 +135,7 @@ class UserServiceImplTest {
         assertThrows(InsufficientAuthenticationException.class, () -> service.getMyPosts(PageRequest.of(0, 20)));
         assertThrows(InsufficientAuthenticationException.class, () -> service.getMyBookmarks(PageRequest.of(0, 20)));
         assertThrows(InsufficientAuthenticationException.class,
-                () -> service.updateMe(new UpdateProfileRequest("Name", null, null, null)));
+                () -> service.updateMe(new UpdateProfileRequest("Name", null)));
         verify(users, never()).saveAndFlush(any());
         verifyNoInteractions(posts, bookmarks);
     }
