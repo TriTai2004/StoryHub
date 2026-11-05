@@ -18,6 +18,7 @@ import story.exception.ErrorCode;
 import story.feature.post.model.Post;
 import story.feature.post.model.PostBookmark;
 import story.feature.post.repository.*;
+import story.feature.upload.services.service.MediaStorageService;
 import story.feature.user.dto.req.UpdateProfileRequest;
 import story.feature.user.mappers.UserMapper;
 import story.feature.user.model.User;
@@ -33,7 +34,8 @@ class UserServiceImplTest {
     PostBookmarkRepository bookmarks = mock(PostBookmarkRepository.class);
     PostImageRepository images = mock(PostImageRepository.class);
     PostHashtagRepository hashtags = mock(PostHashtagRepository.class);
-    UserServiceImpl service = new UserServiceImpl(users, posts, bookmarks, images, hashtags, new UserMapper());
+    MediaStorageService mediaStorageService = mock(MediaStorageService.class);
+    UserServiceImpl service = new UserServiceImpl(users, posts, bookmarks, images, hashtags, new UserMapper(), mediaStorageService);
     User current;
 
     @BeforeEach
@@ -44,6 +46,8 @@ class UserServiceImplTest {
         current.setEmail("alice@example.com");
         current.setBio("Old bio");
         current.setAvatarKey("old-avatar");
+        current.setAvatarUrl("https://example.com/avatar.jpg");
+        current.setCoverUrl("https://example.com/cover.jpg");
         current.setPasswordHash("hash");
         var principal = new CustomUserDetails(current.getId(), current.getEmail(), "hash", User.Status.ACTIVE, List.of());
         SecurityContextHolder.getContext().setAuthentication(
@@ -55,12 +59,53 @@ class UserServiceImplTest {
     void cleanup() { SecurityContextHolder.clearContext(); }
 
     @Test
+    void coverDeletesOldImageOnlyAfterCommitAndReturnsUrl() {
+        current.setCoverKey("old-cover");
+        var file = new org.springframework.mock.web.MockMultipartFile("file", new byte[] {1});
+        when(mediaStorageService.upload(file)).thenReturn(
+                new story.feature.upload.services.dto.res.UploadResult("new-cover", "https://example.com/new.jpg", 1L, 1, 1));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            var response = service.updateCover(file);
+            assertEquals("https://example.com/new.jpg", response.coverUrl());
+            assertEquals("new-cover", current.getCoverKey());
+            assertEquals("old-avatar", current.getAvatarKey());
+            verify(mediaStorageService, never()).delete(anyString());
+            var callbacks = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations();
+            callbacks.forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+            verify(mediaStorageService).delete("old-cover");
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void coverRollbackDeletesNewImageAndKeepsOldImage() {
+        current.setCoverKey("old-cover");
+        var file = new org.springframework.mock.web.MockMultipartFile("file", new byte[] {1});
+        when(mediaStorageService.upload(file)).thenReturn(
+                new story.feature.upload.services.dto.res.UploadResult("new-cover", "https://example.com/new.jpg", 1L, 1, 1));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.updateCover(file);
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()
+                .forEach(callback -> callback.afterCompletion(
+                        org.springframework.transaction.support.TransactionSynchronization.STATUS_ROLLED_BACK));
+            verify(mediaStorageService).delete("new-cover");
+            verify(mediaStorageService, never()).delete("old-cover");
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
     void patchUpdatesOnlyProvidedFieldsOfAuthenticatedUser() {
         when(users.saveAndFlush(current)).thenReturn(current);
         var result = service.updateMe(new UpdateProfileRequest(" Alice ", "", null, null));
         assertEquals("Alice", result.displayName());
         assertNull(result.bio());
-        assertEquals("old-avatar", result.avatarKey());
+        assertEquals("https://example.com/avatar.jpg", result.avatarUrl());
+        assertEquals("https://example.com/cover.jpg", result.coverUrl());
         assertEquals(current.getId(), result.id());
         assertEquals("alice@example.com", result.email());
         assertEquals("hash", current.getPasswordHash());

@@ -16,6 +16,8 @@ import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 
 import lombok.RequiredArgsConstructor;
+import story.exception.AppException;
+import story.exception.ErrorCode;
 import story.feature.upload.services.dto.res.UploadResult;
 import story.feature.upload.services.service.MediaStorageService;
 
@@ -56,7 +58,7 @@ public class CloudinaryStorageService implements MediaStorageService{
     public void delete(String publicId) {
         
         if(publicId == null || publicId.isBlank()){
-            throw new IllegalArgumentException("Public ID is required");
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "Public ID is required");
         }
 
         try {
@@ -75,7 +77,7 @@ public class CloudinaryStorageService implements MediaStorageService{
             }
 
         } catch (Exception e) {
-            throw new IllegalStateException("Cannot delete image", e);
+            throw new AppException(ErrorCode.IMAGE_DELETE_FAILED, e);
 
         }
 
@@ -83,23 +85,23 @@ public class CloudinaryStorageService implements MediaStorageService{
 
     private void validateImg(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Image file is required");
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "Image file is required");
         }
 
         if (file.getSize() > 5L * 1024 * 1024) {
-            throw new IllegalArgumentException("Image size must not exceed 5MB");
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "Image size must not exceed 5MB");
         }
 
         try (InputStream input = file.getInputStream();
             ImageInputStream imageInput = ImageIO.createImageInputStream(input)) {
 
             if (imageInput == null) {
-                throw new IllegalArgumentException("Cannot read image");
+                throw new AppException(ErrorCode.VALIDATION_FAILED, "Cannot read image");
             }
 
             Iterator<ImageReader> readers = ImageIO.getImageReaders(imageInput);
             if (!readers.hasNext()) {
-                throw new IllegalArgumentException("Unsupported or invalid image");
+                throw new AppException(ErrorCode.VALIDATION_FAILED, "Unsupported or invalid image");
             }
 
             ImageReader reader = readers.next();
@@ -110,20 +112,20 @@ public class CloudinaryStorageService implements MediaStorageService{
                 int height = reader.getHeight(0);
 
                 if (width <= 0 || height <= 0 || width > 4096 || height > 4096) {
-                    throw new IllegalArgumentException(
+                    throw new AppException(ErrorCode.VALIDATION_FAILED, 
                         "Image dimensions must be between 1 and 4096px"
                     );
                 }
 
                 // Decode after checking dimensions to validate image content.
                 if (reader.read(0) == null) {
-                    throw new IllegalArgumentException("Invalid image content");
+                    throw new AppException(ErrorCode.VALIDATION_FAILED, "Invalid image content");
                 }
             } finally {
                 reader.dispose();
             }
         } catch (IOException e) {
-            throw new IllegalArgumentException("Cannot read image file", e);
+            throw new AppException(ErrorCode.VALIDATION_FAILED, "Cannot read image file. The image may be corrupted or unsupported.");
         }
     }
     

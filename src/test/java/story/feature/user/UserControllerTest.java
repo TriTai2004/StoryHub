@@ -50,6 +50,21 @@ class UserControllerTest {
     }
 
     @Test
+    void coverUploadBindsFileAndReturnsUrl() throws Exception {
+        var file = new org.springframework.mock.web.MockMultipartFile(
+                "file", "cover.png", "image/png", new byte[] {1});
+        User profile = new User();
+        profile.setCoverUrl("https://example.com/cover.png");
+        when(service.updateCover(any())).thenReturn(new UserMapper().toMyProfile(profile));
+        mvc.perform(multipart(org.springframework.http.HttpMethod.PATCH, "/api/v1/users/me/cover")
+                .file(file).with(user("alice")).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.coverUrl").value("https://example.com/cover.png"))
+            .andExpect(jsonPath("$.data.coverKey").doesNotExist());
+        verify(service).updateCover(any());
+    }
+
+    @Test
     void publicProfileDoesNotExposeAccountInformation() throws Exception {
         User user = new User();
         user.setId(USER_ID);

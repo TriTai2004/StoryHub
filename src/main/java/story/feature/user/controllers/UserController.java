@@ -2,12 +2,14 @@ package story.feature.user.controllers;
 
 import java.util.UUID;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import story.common.dto.ApiResponse;
 import story.common.dto.PageResponse;
 import story.feature.user.dto.req.UpdateProfileRequest;
@@ -39,6 +41,16 @@ public class UserController {
     @PatchMapping("/me")
     public ResponseEntity<ApiResponse<MyProfileResponse>> updateMe(@Valid @RequestBody UpdateProfileRequest request) {
         return ResponseEntity.ok(ApiResponse.success(userService.updateMe(request)));
+    }
+
+    @PatchMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<MyProfileResponse>> updateAvatar(@RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.success(userService.updateAvatar(file)));
+    }
+
+    @PatchMapping(value = "/me/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<MyProfileResponse>> updateCover(@RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.success(userService.updateCover(file)));
     }
 
     @GetMapping("/me/posts")

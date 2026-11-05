@@ -12,12 +12,12 @@ import story.feature.user.model.User;
 public class UserMapper {
     public PublicProfileResponse toPublicProfile(User user) {
         return new PublicProfileResponse(user.getId(), user.getUsername(), user.getDisplayName(),
-                user.getBio(), user.getAvatarKey(), user.getCoverKey(), user.getCreatedAt());
+                user.getBio(), user.getAvatarUrl(), user.getCoverUrl(), user.getCreatedAt());
     }
 
     public MyProfileResponse toMyProfile(User user) {
         return new MyProfileResponse(user.getId(), user.getUsername(), user.getDisplayName(),
-                user.getEmail(), user.getBio(), user.getAvatarKey(), user.getCoverKey(),
+                user.getEmail(), user.getBio(), user.getAvatarUrl(), user.getCoverUrl(),
                 user.getEmailVerifiedAt(), user.getCreatedAt(), user.getUpdatedAt());
     }
 

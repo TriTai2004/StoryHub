@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -12,6 +14,9 @@ import org.springframework.security.authentication.InsufficientAuthenticationExc
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.data.domain.Pageable;
 import story.common.dto.PageResponse;
 import story.config.CustomUserDetails;
@@ -22,6 +27,8 @@ import story.feature.post.model.PostBookmark;
 import story.feature.post.model.PostImage;
 import story.feature.post.model.PostHashtag;
 import story.feature.post.repository.*;
+import story.feature.upload.services.dto.res.UploadResult;
+import story.feature.upload.services.service.MediaStorageService;
 import story.feature.user.dto.req.UpdateProfileRequest;
 import story.feature.user.dto.res.*;
 import story.feature.user.mappers.UserMapper;
@@ -29,6 +36,7 @@ import story.feature.user.model.User;
 import story.feature.user.repository.UserRepository;
 import story.feature.user.services.service.IUserService;
 
+@Slf4j 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -39,6 +47,7 @@ public class UserServiceImpl implements IUserService {
     private final PostImageRepository imageRepository;
     private final PostHashtagRepository hashtagRepository;
     private final UserMapper userMapper;
+    private final MediaStorageService mediaStorageService;
 
     @Override
     public PublicProfileResponse getPublicProfile(UUID userId) {
@@ -128,7 +137,82 @@ public class UserServiceImpl implements IUserService {
                 hashtags.getOrDefault(post.getId(), List.of()))));
     }
 
+    @Override
+    @Transactional
+    public MyProfileResponse updateCover(MultipartFile file) {
+        User user = currentUser();
+        String oldPublicId = user.getCoverKey();
+        UploadResult result = mediaStorageService.upload(file);
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                if (oldPublicId != null && !oldPublicId.isBlank()
+                        && !oldPublicId.equals(result.publicId())) {
+                    deleteCoverQuietly(oldPublicId);
+                }
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK && !result.publicId().equals(oldPublicId)) {
+                    deleteCoverQuietly(result.publicId());
+                }
+            }
+        });
+
+        user.setCoverKey(result.publicId());
+        user.setCoverUrl(result.secureUrl());
+        return userMapper.toMyProfile(user);
+    }
+
+    private void deleteCoverQuietly(String publicId) {
+        try {
+            mediaStorageService.delete(publicId);
+        } catch (Exception e) {
+            log.warn("Cannot delete cover image: {}", publicId, e);
+        }
+    }
+
     private String clean(String value) {
         return value.isBlank() ? null : value.strip();
     }
+
+    @Override
+    @Transactional
+    public MyProfileResponse updateAvatar(MultipartFile file) {
+        User user = currentUser();
+        String oldPublicId = user.getAvatarKey();
+        UploadResult result = mediaStorageService.upload(file);
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                if (oldPublicId != null && !oldPublicId.isBlank()
+                        && !oldPublicId.equals(result.publicId())) {
+                    deleteAvatarQuietly(oldPublicId);
+                }
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK && !result.publicId().equals(oldPublicId)) {
+                    deleteAvatarQuietly(result.publicId());
+                }
+            }
+        });
+
+        user.setAvatarKey(result.publicId());
+        user.setAvatarUrl(result.secureUrl());
+        return userMapper.toMyProfile(user);
+    }
+
+    private void deleteAvatarQuietly(String publicId) {
+        try {
+            mediaStorageService.delete(publicId);
+        } catch (Exception e) {
+            log.warn("Cannot delete avatar image: {}", publicId, e);
+        }
+    }
+
 }
