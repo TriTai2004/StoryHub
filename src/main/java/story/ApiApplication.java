@@ -5,12 +5,14 @@ import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+
+import story.config.properties.CloudinaryProperties;
 import story.config.properties.CookieProperties;
 import story.config.properties.JwtProperties;
 import story.config.properties.SessionProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class, SessionProperties.class})
+@EnableConfigurationProperties({CookieProperties.class, JwtProperties.class, SessionProperties.class, CloudinaryProperties.class})
 public class ApiApplication {
 
 	public static void main(String[] args) {
