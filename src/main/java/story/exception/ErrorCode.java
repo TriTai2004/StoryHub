@@ -24,6 +24,7 @@ public enum ErrorCode {
     REQUEST_FAILED(HttpStatus.BAD_REQUEST, "The request could not be completed."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred."),
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "The service is temporarily unavailable."),
+    IMAGE_DELETE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "Cannot delete image. Please try again later."),
     REQUEST_TIMEOUT(HttpStatus.SERVICE_UNAVAILABLE, "Request processing timed out.");
 
     private final HttpStatus status;

@@ -95,6 +95,8 @@ public class SecurityConfig {
 					.permitAll()
 
                     .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                    .requestMatchers("/api/v1/users/me", "/api/v1/users/me/**").authenticated()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/users/{userId}", "/api/v1/users/{userId}/posts").permitAll()
                     .requestMatchers("/oauth2/authorization/google", "/login/oauth2/code/google").permitAll()
 
 					.requestMatchers("/api/admin/**")

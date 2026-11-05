@@ -69,6 +69,13 @@ public class User {
     @ColumnDefault("now()")
     private Instant updatedAt;
 
+    @Column(name = "avatar_url", nullable = true, columnDefinition = "text")
+    private String avatarUrl;
+
+    @Column(name = "cover_url", nullable = true, columnDefinition = "text")
+    private String coverUrl;
+    
+
     public enum Role {
         USER, ADMIN
     }
