@@ -396,11 +396,14 @@ class AuthServiceImplTest {
     @Test
     void googleCreatesIdentityAndIssuesCookiesAfterCommit() {
         var principal = googlePrincipal();
+        when(principal.getPicture()).thenReturn("https://example.com/google-avatar.jpg");
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
             User created = invocation.getArgument(0);
             created.setId(user.getId());
             assertNotNull(created.getUsername());
             assertNull(created.getPasswordHash());
+            assertEquals("https://example.com/google-avatar.jpg", created.getAvatarUrl());
+            assertNull(created.getAvatarKey());
             assertNotNull(created.getEmailVerifiedAt());
             assertEquals(User.Role.USER, created.getRole());
             return created;

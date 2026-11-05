@@ -157,8 +157,8 @@ public class AuthServiceImpl implements IAuthService {
         User user = new User();
         user.setUsername("gg_" + UUID.randomUUID().toString().replace("-", ""));
         user.setEmail(email);
-        if(avatar != null ){
-            user.setAvatarKey(avatar);
+        if (avatar != null && !avatar.isBlank()) {
+            user.setAvatarUrl(avatar);
         }
         String name = principal.getFullName();
         if (name != null) {
